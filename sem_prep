@@ -1,0 +1,244 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+# -----------------------------
+# Environment safety 
+# -----------------------------
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+
+# -----------------------------
+# Setup
+# -----------------------------
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+PH=7.4
+CPU=""
+CPU_FRACTION=0.8
+OUTDIR="prep_out"
+RESUME=false
+
+# -----------------------------
+# Usage
+# -----------------------------
+usage() {
+cat << EOF
+
+============================================================
+ SEM_PREP — Ligand Preparation Pipeline 
+============================================================
+
+USAGE:
+  sem_prep --input FILE --out_dir DIR [options]
+
+REQUIRED:
+  --input FILE
+  --out_dir DIRECTORY
+
+OPTIONAL:
+  --ph FLOAT            (default: 7.4)
+  --cpu INT
+  --cpu_fraction FLOAT   (default: 0.8)
+  --resume              Resume existing run (no overwrite)
+
+EOF
+exit 1
+}
+
+# -----------------------------
+# Argument parsing
+# -----------------------------
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -h|--help) usage ;;
+        --input) INPUT="$2"; shift 2 ;;
+        --ph) PH="$2"; shift 2 ;;
+        --cpu) CPU="$2"; shift 2 ;;
+        --cpu_fraction) CPU_FRACTION="$2"; shift 2 ;;
+        --out_dir) OUTDIR="$2"; shift 2 ;;
+        --resume) RESUME=true; shift ;;
+        *) usage ;;
+    esac
+done
+
+[[ -z "${INPUT:-}" ]] && usage
+
+# -----------------------------
+# Validate input
+# -----------------------------
+if [[ ! -f "$INPUT" ]]; then
+    echo "[ERROR] Input file not found: $INPUT"
+    exit 1
+fi
+
+if [[ ! -s "$INPUT" ]]; then
+    echo "[ERROR] Input file is empty: $INPUT"
+    exit 1
+fi
+
+# -----------------------------
+# Handle output directory
+# -----------------------------
+if [[ "$RESUME" = false && -d "$OUTDIR" ]]; then
+    echo "[INFO] Removing existing directory: $OUTDIR"
+    rm -rf "$OUTDIR"
+fi
+
+# -----------------------------
+# Directory structure
+# -----------------------------
+SMI_DIR="$OUTDIR/smiles"
+PROT_DIR="$OUTDIR/protonation"
+CONF_DIR="$OUTDIR/3D"
+PDBQT_DIR="$OUTDIR/pdbqt"
+LOG_DIR="$OUTDIR/logs"
+
+mkdir -p "$SMI_DIR" "$PROT_DIR" "$CONF_DIR" "$PDBQT_DIR" "$LOG_DIR"
+
+# -----------------------------
+# CPU handling
+# -----------------------------
+TOTAL_CPU=$(nproc)
+
+if [[ -n "${CPU:-}" ]]; then
+    JOBS="$CPU"
+else
+    JOBS=$(python3 - <<EOF
+import math
+print(max(1, int($TOTAL_CPU * $CPU_FRACTION)))
+EOF
+)
+fi
+
+echo "[INFO] CPUs available: $TOTAL_CPU | Using: $JOBS"
+
+# ============================================================
+# STEP 1: INPUT PROCESSING
+# ============================================================
+
+echo "[INFO] Step 1: Processing input..."
+
+python3 "$SCRIPT_DIR/py/input_handler.py" \
+    --input "$INPUT" \
+    --out_smi "$SMI_DIR/master.smi" \
+    --id_map "$OUTDIR/id_map.csv" \
+    > "$LOG_DIR/input.log" 2>&1
+
+if [[ ! -s "$SMI_DIR/master.smi" ]]; then
+    echo "[ERROR] No molecules extracted"
+    exit 1
+fi
+
+TOTAL_LIGANDS=$(wc -l < "$SMI_DIR/master.smi")
+echo "[INFO] Ligands extracted: $TOTAL_LIGANDS"
+
+# ============================================================
+# STEP 2: PROTONATION
+# ============================================================
+
+echo "[INFO] Step 2: Protonation..."
+
+bash "$SCRIPT_DIR/lib/protonate.sh" \
+    "$SMI_DIR/master.smi" \
+    "$PROT_DIR" \
+    "$PH" \
+    "$JOBS"
+
+if [[ ! -s "$PROT_DIR/protonated_master.smi" ]]; then
+    echo "[ERROR] Protonation failed"
+    exit 1
+fi
+
+PROTONATED_COUNT=$(wc -l < "$PROT_DIR/protonated_master.smi")
+echo "[INFO] Protonated ligands: $PROTONATED_COUNT"
+
+# ============================================================
+# STEP 3: 3D GENERATION (RESUME SAFE)
+# ============================================================
+
+echo "[INFO] Step 3: 3D conformers..."
+
+export SCRIPT_DIR CONF_DIR LOG_DIR
+
+find "$PROT_DIR/protonated_smi" -name "*.smi" | \
+parallel -j "$JOBS" --env SCRIPT_DIR --env CONF_DIR --env LOG_DIR '
+infile={}
+base=$(basename "$infile" .smi)
+
+outfile="$CONF_DIR/${base}_3D.sdf"
+logfile="$LOG_DIR/3D_${base}.log"
+
+if [[ -s "$outfile" ]]; then
+    exit 0
+fi
+
+python3 "$SCRIPT_DIR/py/generate_3d.py" \
+    --input "$infile" \
+    --outdir "$CONF_DIR" \
+    > "$logfile" 2>&1 || echo "$base" >> "$LOG_DIR/3D_failed.txt"
+'
+
+THREED_COUNT=$(ls "$CONF_DIR"/*_3D.sdf 2>/dev/null | wc -l || true)
+
+# ============================================================
+# STEP 4: PDBQT CONVERSION (RESUME SAFE)
+# ============================================================
+
+echo "[INFO] Step 4: PDBQT conversion..."
+
+export PDBQT_DIR LOG_DIR
+
+find "$CONF_DIR" -name "*_3D.sdf" | \
+parallel -j "$JOBS" --env PDBQT_DIR --env LOG_DIR '
+infile={}
+base=$(basename "$infile" _3D.sdf)
+
+outfile="$PDBQT_DIR/${base}.pdbqt"
+logfile="$LOG_DIR/meeko_${base}.log"
+
+if [[ -s "$outfile" ]]; then
+    exit 0
+fi
+
+mk_prepare_ligand.py \
+    -i "$infile" \
+    -o "$outfile" \
+    > "$logfile" 2>&1
+
+if [[ ! -s "$outfile" ]]; then
+    echo "$base" >> "$LOG_DIR/pdbqt_failed.txt"
+fi
+'
+
+PDBQT_COUNT=$(ls "$PDBQT_DIR"/*.pdbqt 2>/dev/null | wc -l || true)
+
+# ============================================================
+# FINAL SUMMARY
+# ============================================================
+
+SUMMARY_FILE="$OUTDIR/summary.txt"
+
+echo "================================" | tee "$SUMMARY_FILE"
+echo "SEM_PREP SUMMARY" | tee -a "$SUMMARY_FILE"
+echo "================================" | tee -a "$SUMMARY_FILE"
+echo "Input ligands:        $TOTAL_LIGANDS" | tee -a "$SUMMARY_FILE"
+echo "Protonated ligands:  $PROTONATED_COUNT" | tee -a "$SUMMARY_FILE"
+echo "3D generated:        $THREED_COUNT" | tee -a "$SUMMARY_FILE"
+echo "PDBQT generated:     $PDBQT_COUNT" | tee -a "$SUMMARY_FILE"
+
+if [[ -f "$LOG_DIR/3D_failed.txt" ]]; then
+    FAIL3D=$(wc -l < "$LOG_DIR/3D_failed.txt")
+    echo "3D failures:         $FAIL3D" | tee -a "$SUMMARY_FILE"
+fi
+
+if [[ -f "$LOG_DIR/pdbqt_failed.txt" ]]; then
+    FAILPDBQT=$(wc -l < "$LOG_DIR/pdbqt_failed.txt")
+    echo "PDBQT failures:      $FAILPDBQT" | tee -a "$SUMMARY_FILE"
+fi
+
+echo "================================" | tee -a "$SUMMARY_FILE"
+
+echo "[SUCCESS] Ligand Preparation complete"
+echo "[INFO] Summary written to $SUMMARY_FILE"
