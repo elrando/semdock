@@ -45,6 +45,7 @@ Priority:
 EOF
 exit 1
 }
+[[ $# -eq 0 ]] && usage
 
 # -----------------------------
 # Parse args
