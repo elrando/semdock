@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/banner.png" alt="semdock banner" width="850">
+  <img src="assets/banner.jpg" alt="semdock banner" width="850">
 </p>
 
 # semdock [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
