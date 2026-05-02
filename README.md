@@ -1,0 +1,547 @@
+<p align="center">
+  <img src="assets/banner.png" alt="semdock banner" width="850">
+</p>
+
+# semdock
+
+**semdock** is a CPU-parallelized molecular docking workflow for large-scale virtual screening using **AutoDock Vina**.  
+The pipeline automates ligand preparation from multiple chemical formats, receptor preparation, docking execution with job resumption, and post-docking analysis with optional pose similarity scoring.
+
+The workflow consists of four command-line tools:
+
+- **sem_prep** – Converts raw chemical datasets (`.sdf`, `.smi`, `.csv`) into docking-ready PDBQT ligands.
+- **jamreceptor** – Prepares receptor structures and generates docking grid configuration files.
+- **sem_dock** – Runs CPU-parallel AutoDock Vina docking with resume support.
+- **sem_filter** – Analyzes docking results, ranks ligands, filters hits, and optionally computes pose similarity scores (SimScore).
+
+---
+
+# Workflow overview
+
+```text
+Input molecules
+   ↓
+sem_prep
+   ↓
+Docking-ready ligands (.pdbqt)
+   ↓
+jamreceptor
+   ↓
+Prepared receptor + conf.txt
+   ↓
+sem_dock
+   ↓
+Docking outputs
+   ↓
+sem_filter
+   ↓
+Ranked + filtered results
+```
+
+---
+
+# Features
+
+## sem_prep
+- Accepts:
+  - `.sdf`
+  - `.smi`
+  - `.csv`
+- Ligand standardization
+- Salt removal
+- Protonation using **Dimorphite-DL**
+- 3D conformer generation using **RDKit**
+- Geometry optimization
+- PDBQT conversion using **Meeko**
+- Source tracking:
+  - PubChem
+  - ZINC
+  - ChEMBL
+  - Custom IDs
+
+Outputs:
+- standardized ligands
+- protonated SMILES
+- 3D SDF
+- PDBQT files
+- `id_map.csv`
+
+---
+
+## jamreceptor
+Prepares receptor structures for docking.
+
+Features:
+- Converts receptor PDB → PDBQT
+- Optional binding pocket detection using **fpocket**
+- Generates docking box coordinates
+- Writes `conf.txt`
+
+Outputs:
+- `receptor.pdbqt`
+- `conf.txt`
+
+---
+
+## sem_dock
+Runs AutoDock Vina docking in parallel.
+
+Features:
+- CPU parallelization
+- Resume interrupted jobs
+- Reads docking parameters from `conf.txt`
+- Supports user-defined:
+  - exhaustiveness
+  - num_modes
+  - energy_range
+
+Outputs:
+- docked PDBQT files
+- docking logs
+
+---
+
+## sem_filter
+Post-docking analysis and filtering.
+
+Features:
+- Generates ranked results for **all ligands**
+- Threshold-based filtering
+- Top-N filtering
+- Optional descriptor calculation
+- Optional pose similarity scoring (`--simscore`)
+
+SimScore:
+- Calculated from Vina pose RMSD clustering
+- Reported only when `--simscore` flag is used
+- **Not used for ranking**
+- If only one docking mode exists:
+  - `SimScore = 0`
+
+Outputs:
+- `Results.csv`
+- `Filtered_Results.csv`
+- `Filtered_Features.csv`
+
+---
+
+# System setup & Installation
+
+**semdock** is designed for Linux-based systems and is intended to run inside a **Conda environment** for simplified dependency management and reproducibility.
+
+These instructions assume a clean Ubuntu/Linux system.
+
+---
+
+## 1. Update system and install essential packages
+
+Open a terminal and run:
+
+```bash
+sudo apt update && sudo apt upgrade -y
+sudo apt install -y build-essential nano wget curl git cmake libboost-all-dev
+```
+
+> **Note:** You may be prompted to enter your superuser password.
+
+---
+
+## 2. Install Miniconda and create environment
+
+Conda provides isolated software environments for reproducible installation.
+
+### Download and install Miniconda
+
+```bash
+wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+bash Miniconda3-latest-Linux-x86_64.sh
+source ~/.bashrc
+```
+
+### Create and activate semdock environment
+
+```bash
+conda create --name semdock python=3.10 pip
+conda activate semdock
+conda config --env --add channels conda-forge
+```
+
+---
+
+## 3. Install software dependencies
+
+Install required packages:
+
+```bash
+conda install -c conda-forge rdkit meeko parallel pymol-open-source
+pip install dimorphite_dl
+```
+
+---
+
+## 4. Install AutoDockTools (MGLTools)
+
+AutoDockTools is required by `jamreceptor`.
+
+### Download and extract
+
+```bash
+mkdir ~/programs
+cd ~/programs
+wget https://ccsb.scripps.edu/mgltools/download/491/mgltools_Linux-x86_64_1.5.7.tar.gz
+tar -zxf mgltools_Linux-x86_64_1.5.7.tar.gz
+```
+
+### Install
+
+```bash
+cd mgltools_x86_64Linux2_1.5.7
+./install.sh
+```
+
+### Add to PATH
+
+```bash
+echo 'export PATH=$HOME/programs/mgltools_x86_64Linux2_1.5.7/bin:$PATH' >> ~/.bashrc
+source ~/.bashrc
+```
+
+---
+
+## 5. Install fpocket
+
+fpocket is used by `jamreceptor` for binding pocket detection.
+
+```bash
+cd ~/programs
+git clone https://github.com/Discngine/fpocket.git
+cd fpocket
+make
+sudo make install
+```
+
+---
+
+## 6. Install AutoDock Vina
+
+Clone and build AutoDock Vina:
+
+```bash
+cd ~/programs
+git clone https://github.com/ccsb-scripps/AutoDock-Vina
+cd AutoDock-Vina
+mkdir build
+cd build
+cmake ..
+make -j$(nproc)
+```
+
+Add Vina to PATH:
+
+```bash
+echo 'export PATH=$HOME/programs/AutoDock-Vina/build:$PATH' >> ~/.bashrc
+source ~/.bashrc
+```
+
+---
+
+## 7. Install semdock
+
+Clone repository:
+
+```bash
+cd ~/programs
+git clone https://github.com/elrando/semdock.git
+cd semdock
+```
+
+Make scripts executable:
+
+```bash
+chmod +x sem_* jamreceptor fail_check
+chmod +x py/*.py
+chmod +x lib/*.sh
+```
+
+Add semdock to PATH:
+
+```bash
+echo 'export PATH=$HOME/programs/semdock:$PATH' >> ~/.bashrc
+source ~/.bashrc
+```
+
+Reactivate environment:
+
+```bash
+conda activate semdock
+```
+
+This enables execution of:
+
+- `sem_prep`
+- `jamreceptor`
+- `sem_dock`
+- `sem_filter`
+- `fail_check`
+
+from any terminal window.
+
+---
+
+# Usage
+
+The semdock workflow consists of four sequential steps:
+
+1. Ligand preparation (`sem_prep`)
+2. Receptor preparation (`jamreceptor`)
+3. Molecular docking (`sem_dock`)
+4. Result filtering (`sem_filter`)
+
+---
+
+## 1. Prepare ligands
+
+Convert raw compound libraries into docking-ready PDBQT files.
+
+Supported input formats:
+
+* `.sdf`
+* `.smi`
+* `.csv`
+
+Example:
+
+```bash
+conda activate semdock
+
+mkdir my_project
+cd my_project
+
+sem_prep --input compounds.csv --ph 7.4 --cpu 16 --out_dir library
+```
+
+Alternative CPU allocation:
+
+```bash
+sem_prep --input compounds.csv --ph 7.4 --cpu_fraction 0.8 --out_dir library
+```
+
+Output:
+
+```text
+library/
+├── smiles/
+├── protonation/
+├── 3D/
+├── pdbqt/
+├── logs/
+└── id_map.csv
+```
+
+---
+
+## 2. Prepare receptor
+
+Prepare receptor structure and docking grid.
+
+Create receptor directory:
+
+```bash
+mkdir receptor_A
+cd receptor_A
+```
+
+Place receptor PDB file inside this directory, then run:
+
+```bash
+jamreceptor
+```
+
+The script will prompt for:
+
+* receptor PDB filename
+* chain selection
+* binding pocket selection
+* grid padding
+
+Output:
+
+```text
+receptor.pdbqt
+conf.txt
+grid_box.py
+```
+
+Optional grid visualization:
+
+```bash
+pymol grid_box.py
+```
+
+---
+
+## 3. Run docking
+
+Dock prepared ligands using AutoDock Vina.
+
+Run inside receptor directory:
+
+```bash
+sem_dock \
+    --config conf.txt \
+    --lig_dir ../library \
+    --cpu 16 \
+    --out_dir .
+```
+
+Alternative CPU allocation:
+
+```bash
+sem_dock \
+    --config conf.txt \
+    --lig_dir ../library \
+    --cpu_fraction 0.8 \
+    --out_dir .
+```
+
+Optional docking parameters:
+
+```bash
+sem_dock \
+    --config conf.txt \
+    --lig_dir ../library \
+    --cpu 16 \
+    --exhaustiveness 16 \
+    --max_poses 20 \
+    --energy_range 5 \
+    --out_dir .
+```
+
+Resume interrupted jobs:
+
+Re-run the same command. Previously completed ligands are skipped automatically.
+
+Docking output:
+
+```text
+vina_out/
+vina_logs/
+ligands.txt
+failed_docking.txt
+```
+
+---
+
+## 4. Filter results
+
+Analyze docking results and rank compounds.
+
+Basic threshold filtering:
+
+```bash
+sem_filter \
+    --dock_dir . \
+    --prep_dir ../library \
+    --threshold -7.0
+```
+
+Top-N filtering:
+
+```bash
+sem_filter \
+    --dock_dir . \
+    --prep_dir ../library \
+    --top 100
+```
+
+Enable SimScore calculation:
+
+```bash
+sem_filter \
+    --dock_dir . \
+    --prep_dir ../library \
+    --top 100 \
+    --simscore
+```
+
+Output:
+
+```text
+analysis/
+├── Results.csv
+├── Filtered_Results.csv
+└── Filtered_Features.csv
+```
+
+Notes:
+
+* `SimScore` is calculated only when `--simscore` is provided.
+* `SimScore` is reported only and is **not used for ranking**.
+* Ligands with a single docking mode receive `SimScore = 0`.
+
+---
+
+## 5. Check failed ligand preparation
+
+Use `fail_check` to identify ligands that failed during preparation.
+
+```bash
+fail_check --prep_dir library
+```
+
+Detects failures including:
+
+* missing 3D conformers
+* missing SDF files
+* missing PDBQT files
+* incomplete ligand processing
+
+```
+```
+
+
+# Limitations
+
+- Rigid receptor docking only
+- Single protonation state per ligand
+- Single conformer per ligand
+- Binding affinities are approximate screening scores
+- Receptor quality strongly affects docking reliability
+- SimScore reflects pose clustering only and does not predict binding validity
+
+---
+
+# Citation
+
+If you use semdock in research, please cite:
+
+```text
+[Your manuscript citation here]
+```
+
+AutoDock Vina:
+Trott O, Olson AJ. 2010.
+
+RDKit:
+Landrum G. RDKit.
+
+Meeko:
+Forli Lab.
+
+fpocket:
+Le Guilloux et al. 2009.
+```
+
+---
+
+# License
+
+MIT License
+
+---
+
+# Contact
+
+**Shahariar Emon**  
+Email: your_email@example.com
+GitHub: https://github.com/yourusername
