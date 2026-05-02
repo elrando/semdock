@@ -2,7 +2,7 @@
   <img src="assets/banner.png" alt="semdock banner" width="850">
 </p>
 
-# semdock
+# semdock [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 **semdock** is a CPU-parallelized molecular docking workflow for large-scale virtual screening using **AutoDock Vina**.  
 The pipeline automates ligand preparation from multiple chemical formats, receptor preparation, docking execution with job resumption, and post-docking analysis with optional pose similarity scoring.
@@ -15,6 +15,8 @@ The workflow consists of four command-line tools:
 - **sem_filter** – Analyzes docking results, ranks ligands, filters hits, and optionally computes pose similarity scores (SimScore).
 
 ---
+
+
 
 # Workflow overview
 
@@ -527,12 +529,12 @@ If you use semdock in research, please cite:
 
 # License
 
-MIT License
+This project is licensed under the MIT License - see the LICENSE file for details.
 
 ---
 
 # Contact
 
 **Shahariar Emon**  
-Email: your_email@example.com
-GitHub: https://github.com/yourusername
+Email: smemon275@gmail.com  
+GitHub: https://github.com/elrando
