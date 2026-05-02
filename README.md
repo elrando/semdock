@@ -1,5 +1,9 @@
 <p align="center">
-  <img src="assets/banner.jpg" alt="semdock banner" width="850">
+  <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://github.com/elrando/semdock/blob/main/asset/banner.jpg">
+    <source media="(prefers-color-scheme: light)" srcset="https://github.com/elrando/semdock/blob/main/asset/banner.jpg">
+    <img src="https://github.com/elrando/semdock/blob/main/asset/banner.jpg" alt="semdock banner" width="850">
+  </picture>
 </p>
 
 # semdock [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
