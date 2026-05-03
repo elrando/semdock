@@ -235,17 +235,14 @@ Clone and build AutoDock Vina:
 ```bash
 cd ~/programs
 git clone https://github.com/ccsb-scripps/AutoDock-Vina
-cd AutoDock-Vina
-mkdir build
-cd build
-cmake ..
-make -j$(nproc)
+cd AutoDock-Vina/build/linux/release
+make
 ```
 
 Add Vina to PATH:
 
 ```bash
-echo 'export PATH=$HOME/programs/AutoDock-Vina/build:$PATH' >> ~/.bashrc
+echo "export PATH=$HOME/programs/AutoDock-Vina/build/linux/release:\$PATH" >> ~/.bashrc
 source ~/.bashrc
 ```
 
