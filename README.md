@@ -520,6 +520,7 @@ Detects failures including:
 # Citation
 
 If you use semdock in research, please cite:
+- Emon, S. (2026). Scalable Virtual Screening Pipeline: CPU‑Parallelized Docking and Robust Ligand Preparation from Raw Chemical Data (Version 1). Zenodo. https://doi.org/10.5281/zenodo.19998830
 - Barbosa Pereira, P. J., Ripoll-Rozada, J., Macedo-Ribeiro, S., & Manso, J. A. (2025). Protocol for an automated virtual screening pipeline including library generation and docking evaluation. STAR Protocols, 6(4), 104161. https://doi.org/10.1016/j.xpro.2025.104161
 - Manso, J.A. (2025). A collection of bash scripts for a virtual screening pipeline: from compound library generation to docking score evaluation. Zenodo, https://doi.org/10.5281/zenodo.15577778.
 - Eberhardt, J., Santos-Martins, D., Tillack, A. F., & Forli, S. (2021). AutoDock Vina 1.2.0: New Docking Methods, Expanded Force Field, and Python Bindings. Journal of Chemical Information and Modeling, 61(8), 3891–3898. https://doi.org/10.1021/acs.jcim.1c00203
