@@ -73,7 +73,8 @@ def detect_columns(headers):
         "chembl_id",
         "chembl id",
         "chembl",
-        "id"
+        "id",
+        "sourceid"
     ]
 
     smiles_priority = [
