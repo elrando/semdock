@@ -179,7 +179,7 @@ log="$LOG_DIR/${base}.log"
 [[ -s "$out" ]] && exit 0
 
 # Build Vina command dynamically
-cmd=(vina --config "$CONFIG" --cpu 1 --ligand "$lig" --out "$out")
+cmd=(vina --config "$CONFIG" --ligand "$lig" --out "$out")
 
 [[ -n "$EXHAUSTIVENESS" ]] && cmd+=(--exhaustiveness "$EXHAUSTIVENESS")
 [[ -n "$MAX_POSES" ]] && cmd+=(--num_modes "$MAX_POSES")
